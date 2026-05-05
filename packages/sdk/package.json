@@ -1,6 +1,6 @@
 {
   "name": "@pkgring/sdk",
-  "version": "0.0.0",
+  "version": "0.0.1",
   "description": "SDK that wraps @pkgring/core.",
   "license": "MIT",
   "type": "module",
@@ -14,7 +14,10 @@
     },
     "./package.json": "./package.json"
   },
-  "files": ["dist", "README.md"],
+  "files": [
+    "dist",
+    "README.md"
+  ],
   "scripts": {
     "build": "tsup",
     "typecheck": "tsc --noEmit",
