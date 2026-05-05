@@ -18,17 +18,17 @@ Tracer-bullet sandbox for testing the release-branch flow we want to roll into `
 A successful release publishes:
 
 1. **npm**: `@pkgring/core@X.Y.Z`, `@pkgring/sdk@X.Y.Z`, `@pkgring/cli@X.Y.Z` (linked via `fixed`)
-2. **Docker**: `ghcr.io/triggerdotdev/pkgring-sandbox:vX.Y.Z` (multi-arch, `latest` only updated on main releases)
-3. **Helm**: `oci://ghcr.io/triggerdotdev/charts/pkgring:X.Y.Z`
+2. **Docker**: `ghcr.io/ericallam/pkgring-sandbox:vX.Y.Z` (multi-arch, `latest` only updated on main releases)
+3. **Helm**: `oci://ghcr.io/ericallam/charts/pkgring:X.Y.Z`
 4. **GitHub release**: `vX.Y.Z` with notes auto-generated from changesets
 
 ## One-time setup
 
-1. **Push to GitHub**: `gh repo create triggerdotdev/pkgring-sandbox --public --source=. --remote=origin --push`
+1. **Push to GitHub**: `gh repo create ericallam/pkgring-sandbox --public --source=. --remote=origin --push`
 2. **Create npm org `@pkgring`**: `npm org create pkgring` (or via npmjs.com UI)
 3. **Configure trusted publishing** for each package (npmjs.com → package settings → Trusted Publishing):
    - Publisher: GitHub Actions
-   - Repo: `triggerdotdev/pkgring-sandbox`
+   - Repo: `ericallam/pkgring-sandbox`
    - Workflow: `release.yml`
    - Environment: `npm-publish`
 4. **Create the `npm-publish` environment** in GitHub repo settings (no secrets needed; OIDC handles auth)

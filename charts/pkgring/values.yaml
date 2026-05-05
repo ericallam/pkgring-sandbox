@@ -1,5 +1,5 @@
 image:
-  repository: ghcr.io/triggerdotdev/pkgring-sandbox
+  repository: ghcr.io/ericallam/pkgring-sandbox
   tag: ""
   pullPolicy: IfNotPresent
 

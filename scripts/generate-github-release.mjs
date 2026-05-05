@@ -37,15 +37,15 @@ if (published.length > 0) {
 
 lines.push("## Docker image");
 lines.push("");
-lines.push(`- \`ghcr.io/triggerdotdev/pkgring-sandbox:v${version}\``);
-lines.push(`- [GHCR](https://github.com/triggerdotdev/pkgring-sandbox/pkgs/container/pkgring-sandbox)`);
+lines.push(`- \`ghcr.io/ericallam/pkgring-sandbox:v${version}\``);
+lines.push(`- [GHCR](https://github.com/ericallam/pkgring-sandbox/pkgs/container/pkgring-sandbox)`);
 lines.push("");
 
 lines.push("## Helm chart");
 lines.push("");
 lines.push("```bash");
 lines.push(`helm upgrade --install pkgring \\`);
-lines.push(`  oci://ghcr.io/triggerdotdev/charts/pkgring \\`);
+lines.push(`  oci://ghcr.io/ericallam/charts/pkgring \\`);
 lines.push(`  --version "${version}"`);
 lines.push("```");
 lines.push("");

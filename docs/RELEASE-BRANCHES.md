@@ -45,8 +45,8 @@ Pushing to `release/1.2.x` triggers `changesets-pr.yml`, which opens a `changese
 Reviews the version PR like any other release PR. Merging it triggers `release.yml`, which:
 
 - Publishes `@pkgring/{core,sdk,cli}@1.2.1` to npm
-- Pushes `ghcr.io/triggerdotdev/pkgring-sandbox:v1.2.1` (does **not** touch `latest`)
-- Pushes `oci://ghcr.io/triggerdotdev/charts/pkgring:1.2.1`
+- Pushes `ghcr.io/ericallam/pkgring-sandbox:v1.2.1` (does **not** touch `latest`)
+- Pushes `oci://ghcr.io/ericallam/charts/pkgring:1.2.1`
 - Creates GitHub release `v1.2.1`
 
 ### 5. Trigger manually if you skip the auto-PR
@@ -94,8 +94,8 @@ Or, if you know the latest version that should hold `latest`, automate that step
 
 ```bash
 docker buildx imagetools create \
-  -t ghcr.io/triggerdotdev/pkgring-sandbox:latest \
-  ghcr.io/triggerdotdev/pkgring-sandbox:v1.5.0
+  -t ghcr.io/ericallam/pkgring-sandbox:latest \
+  ghcr.io/ericallam/pkgring-sandbox:v1.5.0
 ```
 
 ### Helm chart `latest`

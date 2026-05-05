@@ -73,7 +73,7 @@ jobs:
           REF: ${{ github.ref }}
         run: |
           set -e
-          repo="ghcr.io/triggerdotdev/pkgring-sandbox"
+          repo="ghcr.io/ericallam/pkgring-sandbox"
           tags="$repo:$TAG"
           # Only update the floating "latest" tag for semver releases that
           # ship from main. Hotfix releases on release/* branches MUST NOT

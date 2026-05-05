@@ -6,7 +6,7 @@ Each test consumes npm version numbers forever. Use a major version per session:
 
 ## Setup
 
-- Repo at `triggerdotdev/pkgring-sandbox`, pushed to GitHub
+- Repo at `ericallam/pkgring-sandbox`, pushed to GitHub
 - npm org `@pkgring` exists, trusted publishing configured for `core`, `sdk`, `cli`
 - Local clone, branch protection disabled until tests pass once
 
@@ -27,7 +27,7 @@ git push
 - `changesets-pr.yml` opens `changeset-release/main` proposing `0.1.0` for all three packages
 - Merging that PR triggers `release.yml`
 - npm: `@pkgring/{core,sdk,cli}@0.1.0` published
-- GHCR: `ghcr.io/triggerdotdev/pkgring-sandbox:v0.1.0` and `:latest`
+- GHCR: `ghcr.io/ericallam/pkgring-sandbox:v0.1.0` and `:latest`
 - GHCR OCI: `charts/pkgring:0.1.0`
 - Git tags: `@pkgring/core@0.1.0`, `@pkgring/sdk@0.1.0`, `@pkgring/cli@0.1.0`, `v0.1.0`, `v.docker.0.1.0`, `helm-v0.1.0`
 - GitHub release `v0.1.0`
@@ -59,7 +59,7 @@ git push
 
 **Verify:**
 - `npm view @pkgring/core dist-tags.latest` — what does it show? See Test 8.
-- `docker pull ghcr.io/triggerdotdev/pkgring-sandbox:latest` should still resolve to v0.1.0.
+- `docker pull ghcr.io/ericallam/pkgring-sandbox:latest` should still resolve to v0.1.0.
 
 ## Test 3 — Hotfix while main has moved
 

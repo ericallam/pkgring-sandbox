@@ -10,8 +10,8 @@ name: "Release"
 #
 # What this workflow ships:
 #   - npm packages (@pkgring/*) via changesets/action
-#   - Docker image (ghcr.io/triggerdotdev/pkgring-sandbox) tagged v${VERSION}
-#   - Helm chart (oci://ghcr.io/triggerdotdev/charts/pkgring) tagged v${VERSION}
+#   - Docker image (ghcr.io/ericallam/pkgring-sandbox) tagged v${VERSION}
+#   - Helm chart (oci://ghcr.io/ericallam/charts/pkgring) tagged v${VERSION}
 #   - GitHub release at v${VERSION}
 
 on:
@@ -54,7 +54,7 @@ jobs:
       packages: write
       id-token: write
     if: |
-      github.repository == 'triggerdotdev/pkgring-sandbox' &&
+      github.repository == 'ericallam/pkgring-sandbox' &&
       (
         (github.event_name == 'workflow_dispatch' && github.event.inputs.type == 'release') ||
         (
@@ -202,7 +202,7 @@ jobs:
     permissions:
       contents: read
       id-token: write
-    if: github.repository == 'triggerdotdev/pkgring-sandbox' && github.event_name == 'workflow_dispatch' && github.event.inputs.type == 'prerelease'
+    if: github.repository == 'ericallam/pkgring-sandbox' && github.event_name == 'workflow_dispatch' && github.event.inputs.type == 'prerelease'
     steps:
       - name: Checkout
         uses: actions/checkout@v4
