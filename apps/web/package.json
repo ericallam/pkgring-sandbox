@@ -1,0 +1,12 @@
+{
+  "name": "@pkgring/web",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "main": "server.mjs",
+  "scripts": {
+    "start": "node server.mjs",
+    "build": "echo 'web is built into a container, no js build step'",
+    "typecheck": "echo 'no typecheck for web'"
+  }
+}

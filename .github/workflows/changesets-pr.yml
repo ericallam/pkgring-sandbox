@@ -1,0 +1,102 @@
+name: "Changesets PR"
+
+# Opens / refreshes the auto "Version Packages" PR for the branch the
+# changesets live on. Runs on main AND release/* branches so hotfix flows
+# get the same automation as normal releases.
+#
+# changesets/action picks up the current branch name and opens a PR named
+# `changeset-release/<branch>`. For main that's `changeset-release/main`;
+# for release/3.5.x that's `changeset-release/release/3.5.x`.
+
+on:
+  push:
+    branches:
+      - main
+      - "release/**"
+    paths:
+      - "packages/**"
+      - "apps/**"
+      - "charts/**"
+      - ".changeset/**"
+      - "package.json"
+      - "pnpm-lock.yaml"
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  release-pr:
+    name: Open / update Version Packages PR
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10.33.2
+
+      - name: Setup node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20.20.0
+          cache: "pnpm"
+
+      - name: Install
+        run: pnpm install --frozen-lockfile
+
+      - name: Create / update release PR
+        id: changesets
+        uses: changesets/action@v1
+        with:
+          version: pnpm run changeset:version
+          commit: "chore: release"
+          title: "chore: release"
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Stamp version into Chart.yaml on the release PR branch
+        if: steps.changesets.outputs.published != 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          # changesets opens a PR with branch `changeset-release/<source-branch>`.
+          # Fetch the version it bumped to and rewrite Chart.yaml on that branch
+          # so the helm publish step in release.yml has matching versions.
+          SOURCE_BRANCH="${GITHUB_REF_NAME}"
+          PR_BRANCH="changeset-release/${SOURCE_BRANCH}"
+          if ! git fetch origin "${PR_BRANCH}"; then
+            echo "No release PR branch yet; nothing to stamp."
+            exit 0
+          fi
+          NEW_VERSION=$(git show "origin/${PR_BRANCH}":packages/core/package.json | jq -r '.version')
+          if [ -z "$NEW_VERSION" ] || [ "$NEW_VERSION" = "null" ]; then
+            echo "Could not read version from release PR branch."
+            exit 0
+          fi
+
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git fetch origin "${PR_BRANCH}":"${PR_BRANCH}"
+          git switch "${PR_BRANCH}"
+          # Replace `version:` and `appVersion:` in Chart.yaml.
+          tmp=$(mktemp)
+          awk -v v="$NEW_VERSION" '
+            /^version:/   { print "version: " v; next }
+            /^appVersion:/ { print "appVersion: \"" v "\""; next }
+            { print }
+          ' charts/pkgring/Chart.yaml > "$tmp" && mv "$tmp" charts/pkgring/Chart.yaml
+          if ! git diff --quiet charts/pkgring/Chart.yaml; then
+            git add charts/pkgring/Chart.yaml
+            git commit -m "chore: stamp Chart.yaml to v${NEW_VERSION}"
+            git push origin "${PR_BRANCH}"
+          fi

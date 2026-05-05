@@ -1,0 +1,115 @@
+name: "Publish Docker"
+
+on:
+  workflow_call:
+    inputs:
+      image_tag:
+        description: "Image tag to publish (e.g. v1.2.3)."
+        required: true
+        type: string
+  push:
+    tags:
+      - "v.docker.*"
+      - "build-*"
+  workflow_dispatch:
+    inputs:
+      image_tag:
+        description: "Image tag to publish."
+        required: false
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+
+jobs:
+  publish-web:
+    name: Build & push web image
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+      id-token: write
+    outputs:
+      tag: ${{ steps.get_tag.outputs.tag }}
+      is_semver: ${{ steps.get_tag.outputs.is_semver }}
+      digest: ${{ steps.build.outputs.digest }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Resolve image tag
+        id: get_tag
+        uses: ./.github/actions/get-image-tag
+        with:
+          tag: ${{ inputs.image_tag }}
+
+      - name: Build info
+        id: build_info
+        env:
+          TAG: ${{ steps.get_tag.outputs.tag }}
+          IS_SEMVER: ${{ steps.get_tag.outputs.is_semver }}
+        run: |
+          {
+            if [[ "$IS_SEMVER" == "true" ]]; then
+              echo "BUILD_APP_VERSION=$TAG"
+            else
+              echo "BUILD_APP_VERSION=$TAG"
+            fi
+            echo "BUILD_GIT_SHA=${GITHUB_SHA}"
+            echo "BUILD_GIT_REF_NAME=${GITHUB_REF_NAME}"
+            echo "BUILD_TIMESTAMP_SECONDS=$(date +%s)"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Compute image tags
+        id: compute_tags
+        env:
+          TAG: ${{ steps.get_tag.outputs.tag }}
+          IS_SEMVER: ${{ steps.get_tag.outputs.is_semver }}
+          REF: ${{ github.ref }}
+        run: |
+          set -e
+          repo="ghcr.io/triggerdotdev/pkgring-sandbox"
+          tags="$repo:$TAG"
+          # Only update the floating "latest" tag for semver releases that
+          # ship from main. Hotfix releases on release/* branches MUST NOT
+          # clobber latest — that's the whole point of the release-branch
+          # flow.
+          if [[ "$IS_SEMVER" == "true" && "$REF" == "refs/heads/main" ]]; then
+            tags="$tags,$repo:latest"
+          fi
+          echo "tags=$tags" >> "$GITHUB_OUTPUT"
+
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v3
+
+      - name: Set up Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Login to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.repository_owner }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build and push
+        id: build
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: ./apps/web/Dockerfile
+          platforms: linux/amd64,linux/arm64
+          tags: ${{ steps.compute_tags.outputs.tags }}
+          push: true
+          provenance: true
+          sbom: true
+          build-args: |
+            BUILD_APP_VERSION=${{ steps.build_info.outputs.BUILD_APP_VERSION }}
+            BUILD_GIT_SHA=${{ steps.build_info.outputs.BUILD_GIT_SHA }}
+            BUILD_GIT_REF_NAME=${{ steps.build_info.outputs.BUILD_GIT_REF_NAME }}
+            BUILD_TIMESTAMP_SECONDS=${{ steps.build_info.outputs.BUILD_TIMESTAMP_SECONDS }}
