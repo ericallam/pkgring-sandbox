@@ -1,5 +1,12 @@
 # @pkgring/sdk
 
+## 0.1.3
+
+### Patch Changes
+
+- 93a7682: Trigger 0.1.3 from release/0.1.x to verify the conditional --tag fix. Expected: latest stays at 0.2.0, new dist-tag v0.1 appears at 0.1.3.
+  - @pkgring/core@0.1.3
+
 ## 0.1.2
 
 ### Patch Changes
