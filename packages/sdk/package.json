@@ -1,6 +1,6 @@
 {
   "name": "@pkgring/sdk",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "SDK that wraps @pkgring/core.",
   "license": "MIT",
   "type": "module",
