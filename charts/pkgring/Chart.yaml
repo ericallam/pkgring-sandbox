@@ -2,8 +2,8 @@ apiVersion: v2
 name: pkgring
 description: Tracer-bullet Helm chart for the pkgring-sandbox release pipeline.
 type: application
-version: 0.2.1
-appVersion: "0.2.1"
+version: 0.2.2
+appVersion: "0.2.2"
 keywords:
   - sandbox
   - release-pipeline
