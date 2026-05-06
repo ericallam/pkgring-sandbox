@@ -120,19 +120,23 @@ jobs:
 
       # Decide which npm dist-tag to publish under.
       #
-      # - main publish:           no --tag (defaults to "latest")
-      # - release/<M.m>.x publish: --tag v<M.m> (e.g. v0.1)
+      # - main publish:            no --tag (defaults to "latest")
+      # - release/<M.m>.x publish: --tag release-<M.m>
       #
       # This guarantees a release-branch hotfix never overwrites `latest`,
       # so consumers running `npm install <pkg>` never accidentally get an
-      # older line. They can opt in via `npm install <pkg>@v0.1` if they
-      # want to pin to a release line.
+      # older line. They can opt in via `npm install <pkg>@release-0.1` if
+      # they want to pin to a release line.
+      #
+      # Why the "release-" prefix: npm rejects any dist-tag that parses as
+      # a valid semver range (`v0.1`, `0.1.x`, `0.1` are all rejected). A
+      # non-numeric prefix sidesteps that.
       - name: Compute npm dist-tag
         id: dist_tag
         run: |
           if [[ "$GITHUB_REF_NAME" == release/* ]]; then
             VERSION=$(jq -r '.version' packages/core/package.json)
-            LINE="v$(echo "$VERSION" | cut -d. -f1,2)"
+            LINE="release-$(echo "$VERSION" | cut -d. -f1,2)"
             echo "tag=${LINE}" >> "$GITHUB_OUTPUT"
             echo "Release-branch publish: --tag ${LINE} (latest will NOT be touched)"
           else
