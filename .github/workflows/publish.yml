@@ -7,6 +7,11 @@ on:
         description: "Image tag to publish (e.g. v1.2.3)."
         required: true
         type: string
+      is_latest:
+        description: "Whether this version should also tag :latest. release.yml computes this via version comparison."
+        required: false
+        type: boolean
+        default: false
   push:
     tags:
       - "v.docker.*"
@@ -17,6 +22,11 @@ on:
         description: "Image tag to publish."
         required: false
         type: string
+      is_latest:
+        description: "Tag this build as :latest as well? Manual override."
+        required: false
+        type: boolean
+        default: false
 
 permissions:
   contents: read
@@ -70,19 +80,33 @@ jobs:
         env:
           TAG: ${{ steps.get_tag.outputs.tag }}
           IS_SEMVER: ${{ steps.get_tag.outputs.is_semver }}
-          REF: ${{ github.ref }}
+          IS_LATEST: ${{ inputs.is_latest }}
         run: |
           set -e
           repo="ghcr.io/ericallam/pkgring-sandbox"
           tags="$repo:$TAG"
-          # Only update the floating "latest" tag for semver releases that
-          # ship from main. Hotfix releases on release/* branches MUST NOT
-          # clobber latest — that's the whole point of the release-branch
-          # flow.
-          if [[ "$IS_SEMVER" == "true" && "$REF" == "refs/heads/main" ]]; then
-            tags="$tags,$repo:latest"
+
+          if [[ "$IS_SEMVER" == "true" ]]; then
+            # Strip leading 'v' to get the bare version (e.g. v0.1.2 -> 0.1.2)
+            VERSION="${TAG#v}"
+            MAJOR_MINOR=$(echo "$VERSION" | cut -d. -f1,2)
+
+            # Per-line floating tag (analog of npm "release-X.Y" dist-tag,
+            # and of trigger.dev's :v4-beta). Always set on a semver build
+            # — line-pinned consumers always get the latest patch on their
+            # line, regardless of whether it's the global :latest.
+            tags="$tags,$repo:release-${MAJOR_MINOR}"
+
+            # Global :latest only updated when release.yml decided this
+            # version is the highest-ever (is_latest input). The decision
+            # is centralized in release.yml; publish.yml just trusts it.
+            if [[ "$IS_LATEST" == "true" ]]; then
+              tags="$tags,$repo:latest"
+            fi
           fi
+
           echo "tags=$tags" >> "$GITHUB_OUTPUT"
+          echo "::notice::Docker tags: $tags"
 
       - name: Set up QEMU
         uses: docker/setup-qemu-action@v3

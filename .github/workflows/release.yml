@@ -67,6 +67,7 @@ jobs:
       published: ${{ steps.changesets.outputs.published }}
       published_packages: ${{ steps.changesets.outputs.publishedPackages }}
       published_package_version: ${{ steps.get_version.outputs.package_version }}
+      is_latest: ${{ steps.compare.outputs.is_latest }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -118,11 +119,56 @@ jobs:
       - name: Typecheck
         run: pnpm run typecheck --filter "@pkgring/*"
 
+      # Decide whether this publish should become the new "latest" everywhere
+      # (npm dist-tag, Docker `:latest`, GitHub release "Latest" badge).
+      #
+      # The right rule isn't "are we on a release branch" — it's "is this
+      # version higher than the current latest." That rule handles both:
+      #
+      #   - Lagged hotfix: main shipped 1.5.0; hotfix 1.2.4 from release/1.2.x
+      #     -> 1.2.4 < 1.5.0 -> NOT latest. Goes to dist-tag release-1.2.
+      #
+      #   - Fresh hotfix while main has unreleased work: main released 4.4.5,
+      #     PR #3173 merged but unreleased; hotfix 4.4.6 from release/4.4.x
+      #     -> 4.4.6 > 4.4.5 -> IS latest. Customers running `npm install`
+      #     get the patch.
+      #
+      # Source of truth: npm's `latest` dist-tag for the canonical package
+      # (@pkgring/core). All packages are version-locked via `fixed` in
+      # changeset config so any one is canonical.
+      - name: Compare new version to current latest
+        id: compare
+        run: |
+          set -euo pipefail
+          NEW=$(jq -r '.version' packages/core/package.json)
+          CURRENT=$(npm view @pkgring/core dist-tags.latest 2>/dev/null || true)
+          if [ -z "$CURRENT" ] || [ "$CURRENT" = "undefined" ]; then
+            CURRENT="0.0.0"
+          fi
+
+          # sort -V is semver-aware. If NEW is strictly greater than CURRENT,
+          # NEW is the "highest after this publish" -> becomes latest.
+          HIGHER=$(printf '%s\n%s\n' "$NEW" "$CURRENT" | sort -V | tail -1)
+          if [ "$HIGHER" = "$NEW" ] && [ "$NEW" != "$CURRENT" ]; then
+            IS_LATEST=true
+            DIST_TAG=""
+          else
+            IS_LATEST=false
+            DIST_TAG="release-$(echo "$NEW" | cut -d. -f1,2)"
+          fi
+
+          echo "new=${NEW}"             >> "$GITHUB_OUTPUT"
+          echo "current=${CURRENT}"     >> "$GITHUB_OUTPUT"
+          echo "is_latest=${IS_LATEST}" >> "$GITHUB_OUTPUT"
+          echo "dist_tag=${DIST_TAG}"   >> "$GITHUB_OUTPUT"
+
+          echo "::notice::Publishing ${NEW}; current latest=${CURRENT}; is_latest=${IS_LATEST}; dist_tag=${DIST_TAG:-latest}"
+
       - name: Publish to npm
         id: changesets
         uses: changesets/action@v1
         with:
-          publish: pnpm run changeset:release
+          publish: ${{ steps.compare.outputs.dist_tag != '' && format('pnpm exec changeset publish --tag {0}', steps.compare.outputs.dist_tag) || 'pnpm exec changeset publish' }}
           createGithubReleases: false
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -143,18 +189,21 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           PUBLISHED: ${{ steps.changesets.outputs.publishedPackages }}
           VERSION: ${{ steps.get_version.outputs.package_version }}
+          IS_LATEST: ${{ steps.compare.outputs.is_latest }}
         run: |
-          # The release tag is whatever changesets created. We pick "v${VERSION}"
-          # as the unified one. We don't pass --target so the release attaches
-          # to the existing tag (which lives on main OR the release branch).
-          node scripts/generate-github-release.mjs "${VERSION}" "${PUBLISHED}" > /tmp/release-body.md
-          # Create a v${VERSION} git tag here (changesets creates per-package
-          # tags like @pkgring/core@1.0.0, but we want one unified tag).
+          # changesets creates per-package tags like @pkgring/core@1.0.0; we
+          # additionally create a unified v${VERSION} tag for the GitHub
+          # release. Don't pass --target — the existing tag's commit IS the
+          # right target (lives on main OR the release branch).
+          # --latest is set explicitly: GitHub's auto-detect uses publish
+          # date, which would mark a lagged hotfix as "Latest" by accident.
+          node scripts/generate-github-release.mjs "${VERSION}" "${PUBLISHED}" "${IS_LATEST}" > /tmp/release-body.md
           git tag "v${VERSION}"
           git push origin "v${VERSION}"
           gh release create "v${VERSION}" \
             --title "pkgring v${VERSION}" \
-            --notes-file /tmp/release-body.md
+            --notes-file /tmp/release-body.md \
+            --latest="${IS_LATEST}"
 
       - name: Push v.docker.${VERSION} tag
         if: steps.changesets.outputs.published == 'true'
@@ -183,6 +232,7 @@ jobs:
     uses: ./.github/workflows/publish.yml
     with:
       image_tag: v${{ needs.release.outputs.published_package_version }}
+      is_latest: ${{ needs.release.outputs.is_latest == 'true' }}
 
   publish-helm:
     name: Publish Helm chart
@@ -194,6 +244,53 @@ jobs:
     uses: ./.github/workflows/release-helm.yml
     with:
       chart_version: ${{ needs.release.outputs.published_package_version }}
+
+  dispatch-changelog:
+    name: Dispatch changelog entry to pkgring-site
+    needs: [release, publish-docker, publish-helm]
+    if: needs.release.outputs.published == 'true'
+    runs-on: ubuntu-latest
+    permissions: {}
+    steps:
+      - name: Read GitHub release body
+        id: release_body
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          VERSION: ${{ needs.release.outputs.published_package_version }}
+        run: |
+          BODY=$(gh release view "v${VERSION}" --repo ericallam/pkgring-sandbox --json body --jq '.body')
+          # Use a heredoc-style multiline output (GitHub's canonical pattern)
+          delim="EOF_$(uuidgen)"
+          {
+            echo "body<<${delim}"
+            echo "${BODY}"
+            echo "${delim}"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Dispatch repository_dispatch event to pkgring-site
+        env:
+          GH_TOKEN: ${{ secrets.CROSS_REPO_PAT }}
+          VERSION: ${{ needs.release.outputs.published_package_version }}
+          IS_LATEST: ${{ needs.release.outputs.is_latest }}
+          SOURCE_BRANCH: ${{ github.event.pull_request.base.ref || github.event.inputs.ref || 'main' }}
+          BODY: ${{ steps.release_body.outputs.body }}
+        run: |
+          set -euo pipefail
+          if [ -z "${GH_TOKEN}" ]; then
+            echo "::warning::CROSS_REPO_PAT is not set on this repo. Skipping changelog dispatch."
+            echo "::warning::Add a fine-grained PAT with Contents:write on ericallam/pkgring-site as secret CROSS_REPO_PAT."
+            exit 0
+          fi
+          RELEASE_URL="https://github.com/ericallam/pkgring-sandbox/releases/tag/v${VERSION}"
+          payload=$(jq -nc \
+            --arg version "${VERSION}" \
+            --arg isLatest "${IS_LATEST}" \
+            --arg sourceBranch "${SOURCE_BRANCH}" \
+            --arg releaseUrl "${RELEASE_URL}" \
+            --arg body "${BODY}" \
+            '{event_type: "new-release", client_payload: {version: $version, isLatest: $isLatest, sourceBranch: $sourceBranch, releaseUrl: $releaseUrl, body: $body}}')
+          echo "Dispatching: $(echo "$payload" | jq -c '.client_payload | {version, isLatest, sourceBranch}')"
+          echo "$payload" | gh api repos/ericallam/pkgring-site/dispatches --input -
 
   prerelease:
     name: Prerelease (snapshot)
