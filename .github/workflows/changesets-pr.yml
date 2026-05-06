@@ -104,10 +104,12 @@ jobs:
             find .app-notes -type f -name '*.md' ! -name 'README.md' -delete
           fi
 
-          if git diff --quiet && git diff --cached --quiet; then
-            echo "No post-process changes needed."
+          # Stage everything and check if the commit would have content.
+          # `git add -A` is robust to whichever subset of paths actually exists.
+          git add -A
+          if git diff --cached --quiet; then
+            echo "No post-process changes to commit."
           else
-            git add -A charts/pkgring/Chart.yaml .app-notes/ 2>/dev/null || true
             git commit -m "chore: stamp Chart.yaml to v${NEW_VERSION} and consume .app-notes"
             git push origin "${PR_BRANCH}"
           fi
