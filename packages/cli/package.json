@@ -1,6 +1,6 @@
 {
   "name": "@pkgring/cli",
-  "version": "0.2.1",
+  "version": "0.2.2",
   "description": "CLI that exercises @pkgring/sdk and @pkgring/core.",
   "license": "MIT",
   "type": "module",
