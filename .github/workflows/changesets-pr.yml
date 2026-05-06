@@ -63,21 +63,23 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Stamp version into Chart.yaml on the release PR branch
+      - name: Post-process release PR branch (Chart.yaml + .app-notes)
         if: steps.changesets.outputs.hasChangesets == 'true' && steps.changesets.outputs.published != 'true'
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           set -euo pipefail
-          # changesets/action commits the version bump to a branch named
-          # `changeset-release/<source-branch>`. We stamp Chart.yaml on that
-          # branch so the helm publish step in release.yml sees a matching
-          # chart version. The action leaves the workspace on the source
-          # branch, so we have to switch.
+          # changesets/action committed the version bump to changeset-release/<source-branch>.
+          # Two finishing touches on that branch, atomic with the version bump:
+          #   1. stamp Chart.yaml to match the bumped package version
+          #   2. delete consumed .app-notes/*.md files (kept the README)
+          # Both ride on the same PR so merging it is one atomic "release prep".
           SOURCE_BRANCH="${GITHUB_REF_NAME}"
           PR_BRANCH="changeset-release/${SOURCE_BRANCH}"
 
-          git fetch origin "${PR_BRANCH}" || { echo "PR branch not found; nothing to stamp."; exit 0; }
+          # Explicit refspec so the remote-tracking ref `origin/${PR_BRANCH}`
+          # is created (a bare `git fetch origin BRANCH` only updates FETCH_HEAD).
+          git fetch origin "+${PR_BRANCH}:refs/remotes/origin/${PR_BRANCH}" || { echo "PR branch not found; nothing to do."; exit 0; }
 
           NEW_VERSION=$(git show "origin/${PR_BRANCH}:packages/core/package.json" | jq -r '.version')
           if [ -z "$NEW_VERSION" ] || [ "$NEW_VERSION" = "null" ]; then
@@ -87,9 +89,9 @@ jobs:
 
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          # Force-set local PR branch from origin (works whether or not we're already on it).
           git checkout -B "${PR_BRANCH}" "origin/${PR_BRANCH}"
 
+          # 1. Stamp Chart.yaml
           tmp=$(mktemp)
           awk -v v="$NEW_VERSION" '
             /^version:/    { print "version: " v; next }
@@ -97,10 +99,34 @@ jobs:
             { print }
           ' charts/pkgring/Chart.yaml > "$tmp" && mv "$tmp" charts/pkgring/Chart.yaml
 
-          if ! git diff --quiet charts/pkgring/Chart.yaml; then
-            git add charts/pkgring/Chart.yaml
-            git commit -m "chore: stamp Chart.yaml to v${NEW_VERSION}"
-            git push origin "${PR_BRANCH}"
-          else
-            echo "Chart.yaml already at v${NEW_VERSION}, nothing to do."
+          # 2. Consume .app-notes (delete every *.md except README.md)
+          if [ -d .app-notes ]; then
+            find .app-notes -type f -name '*.md' ! -name 'README.md' -delete
           fi
+
+          # Stage everything and check if the commit would have content.
+          # `git add -A` is robust to whichever subset of paths actually exists.
+          git add -A
+          if git diff --cached --quiet; then
+            echo "No post-process changes to commit."
+          else
+            git commit -m "chore: stamp Chart.yaml to v${NEW_VERSION} and consume .app-notes"
+            git push origin "${PR_BRANCH}"
+          fi
+
+      - name: Enhance release PR title and body
+        if: steps.changesets.outputs.hasChangesets == 'true' && steps.changesets.outputs.published != 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          SOURCE_BRANCH="${GITHUB_REF_NAME}"
+          PR_BRANCH="changeset-release/${SOURCE_BRANCH}"
+          PR_NUMBER=$(gh pr list --repo ericallam/pkgring-sandbox --head "${PR_BRANCH}" --json number --jq '.[0].number')
+          if [ -z "$PR_NUMBER" ]; then
+            echo "No release PR open."
+            exit 0
+          fi
+          NEW_VERSION=$(git show "origin/${PR_BRANCH}:packages/core/package.json" | jq -r '.version')
+          PR_NUMBER="$PR_NUMBER" SOURCE_BRANCH="$SOURCE_BRANCH" NEW_VERSION="$NEW_VERSION" \
+            node scripts/enhance-release-pr.mjs
