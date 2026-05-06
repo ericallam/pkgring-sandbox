@@ -276,6 +276,11 @@ jobs:
           BODY: ${{ steps.release_body.outputs.body }}
         run: |
           set -euo pipefail
+          if [ -z "${GH_TOKEN}" ]; then
+            echo "::warning::CROSS_REPO_PAT is not set on this repo. Skipping changelog dispatch."
+            echo "::warning::Add a fine-grained PAT with Contents:write on ericallam/pkgring-site as secret CROSS_REPO_PAT."
+            exit 0
+          fi
           RELEASE_URL="https://github.com/ericallam/pkgring-sandbox/releases/tag/v${VERSION}"
           payload=$(jq -nc \
             --arg version "${VERSION}" \
