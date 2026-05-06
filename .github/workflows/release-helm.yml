@@ -121,6 +121,11 @@ jobs:
         with:
           tag_name: helm-v${{ steps.version.outputs.version }}
           name: "Helm chart ${{ steps.version.outputs.version }}"
+          # Helm chart releases should never claim the "Latest" badge —
+          # that belongs to the canonical pkgring vX.Y.Z release. Without
+          # this, gh-release defaults to true and clobbers the canonical
+          # latest.
+          make_latest: "false"
           body: |
             ### Install
 
