@@ -1,5 +1,11 @@
 # @pkgring/core
 
+## 0.3.0
+
+### Minor Changes
+
+- 2204104: Add `shout()` function — emits a screaming greeting. Stand-in for "merged but unreleased PR queued on main" used to test Scenario B in TESTING.md.
+
 ## 0.2.0
 
 ### Minor Changes
