@@ -77,7 +77,9 @@ jobs:
           SOURCE_BRANCH="${GITHUB_REF_NAME}"
           PR_BRANCH="changeset-release/${SOURCE_BRANCH}"
 
-          git fetch origin "${PR_BRANCH}" || { echo "PR branch not found; nothing to do."; exit 0; }
+          # Explicit refspec so the remote-tracking ref `origin/${PR_BRANCH}`
+          # is created (a bare `git fetch origin BRANCH` only updates FETCH_HEAD).
+          git fetch origin "+${PR_BRANCH}:refs/remotes/origin/${PR_BRANCH}" || { echo "PR branch not found; nothing to do."; exit 0; }
 
           NEW_VERSION=$(git show "origin/${PR_BRANCH}:packages/core/package.json" | jq -r '.version')
           if [ -z "$NEW_VERSION" ] || [ "$NEW_VERSION" = "null" ]; then
