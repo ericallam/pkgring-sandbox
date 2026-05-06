@@ -1,5 +1,12 @@
 # @pkgring/sdk
 
+## 0.2.4
+
+### Patch Changes
+
+- a21fcd5: Cross-repo dispatch test: ship 0.2.4 from release/0.2.x to verify the changelog repository_dispatch fires correctly with CROSS_REPO_PAT now configured. Should result in a PR opening on ericallam/pkgring-site.
+  - @pkgring/core@0.2.4
+
 ## 0.2.3
 
 ### Patch Changes
