@@ -8,3 +8,7 @@ export type Greeting = {
 export function greet(name: string): Greeting {
   return { message: `hello, ${name}`, source: "core" };
 }
+
+export function farewell(name: string): Greeting {
+  return { message: `goodbye, ${name}`, source: "core" };
+}
