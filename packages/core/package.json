@@ -1,6 +1,6 @@
 {
   "name": "@pkgring/core",
-  "version": "0.2.3",
+  "version": "0.2.4",
   "description": "Core primitives for the pkgring sandbox.",
   "license": "MIT",
   "type": "module",
