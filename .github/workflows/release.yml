@@ -67,6 +67,7 @@ jobs:
       published: ${{ steps.changesets.outputs.published }}
       published_packages: ${{ steps.changesets.outputs.publishedPackages }}
       published_package_version: ${{ steps.get_version.outputs.package_version }}
+      is_latest: ${{ steps.compare.outputs.is_latest }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -118,37 +119,56 @@ jobs:
       - name: Typecheck
         run: pnpm run typecheck --filter "@pkgring/*"
 
-      # Decide which npm dist-tag to publish under.
+      # Decide whether this publish should become the new "latest" everywhere
+      # (npm dist-tag, Docker `:latest`, GitHub release "Latest" badge).
       #
-      # - main publish:            no --tag (defaults to "latest")
-      # - release/<M.m>.x publish: --tag release-<M.m>
+      # The right rule isn't "are we on a release branch" — it's "is this
+      # version higher than the current latest." That rule handles both:
       #
-      # This guarantees a release-branch hotfix never overwrites `latest`,
-      # so consumers running `npm install <pkg>` never accidentally get an
-      # older line. They can opt in via `npm install <pkg>@release-0.1` if
-      # they want to pin to a release line.
+      #   - Lagged hotfix: main shipped 1.5.0; hotfix 1.2.4 from release/1.2.x
+      #     -> 1.2.4 < 1.5.0 -> NOT latest. Goes to dist-tag release-1.2.
       #
-      # Why the "release-" prefix: npm rejects any dist-tag that parses as
-      # a valid semver range (`v0.1`, `0.1.x`, `0.1` are all rejected). A
-      # non-numeric prefix sidesteps that.
-      - name: Compute npm dist-tag
-        id: dist_tag
+      #   - Fresh hotfix while main has unreleased work: main released 4.4.5,
+      #     PR #3173 merged but unreleased; hotfix 4.4.6 from release/4.4.x
+      #     -> 4.4.6 > 4.4.5 -> IS latest. Customers running `npm install`
+      #     get the patch.
+      #
+      # Source of truth: npm's `latest` dist-tag for the canonical package
+      # (@pkgring/core). All packages are version-locked via `fixed` in
+      # changeset config so any one is canonical.
+      - name: Compare new version to current latest
+        id: compare
         run: |
-          if [[ "$GITHUB_REF_NAME" == release/* ]]; then
-            VERSION=$(jq -r '.version' packages/core/package.json)
-            LINE="release-$(echo "$VERSION" | cut -d. -f1,2)"
-            echo "tag=${LINE}" >> "$GITHUB_OUTPUT"
-            echo "Release-branch publish: --tag ${LINE} (latest will NOT be touched)"
-          else
-            echo "tag=" >> "$GITHUB_OUTPUT"
-            echo "Main publish: default dist-tag (latest)"
+          set -euo pipefail
+          NEW=$(jq -r '.version' packages/core/package.json)
+          CURRENT=$(npm view @pkgring/core dist-tags.latest 2>/dev/null || true)
+          if [ -z "$CURRENT" ] || [ "$CURRENT" = "undefined" ]; then
+            CURRENT="0.0.0"
           fi
+
+          # sort -V is semver-aware. If NEW is strictly greater than CURRENT,
+          # NEW is the "highest after this publish" -> becomes latest.
+          HIGHER=$(printf '%s\n%s\n' "$NEW" "$CURRENT" | sort -V | tail -1)
+          if [ "$HIGHER" = "$NEW" ] && [ "$NEW" != "$CURRENT" ]; then
+            IS_LATEST=true
+            DIST_TAG=""
+          else
+            IS_LATEST=false
+            DIST_TAG="release-$(echo "$NEW" | cut -d. -f1,2)"
+          fi
+
+          echo "new=${NEW}"             >> "$GITHUB_OUTPUT"
+          echo "current=${CURRENT}"     >> "$GITHUB_OUTPUT"
+          echo "is_latest=${IS_LATEST}" >> "$GITHUB_OUTPUT"
+          echo "dist_tag=${DIST_TAG}"   >> "$GITHUB_OUTPUT"
+
+          echo "::notice::Publishing ${NEW}; current latest=${CURRENT}; is_latest=${IS_LATEST}; dist_tag=${DIST_TAG:-latest}"
 
       - name: Publish to npm
         id: changesets
         uses: changesets/action@v1
         with:
-          publish: ${{ steps.dist_tag.outputs.tag != '' && format('pnpm exec changeset publish --tag {0}', steps.dist_tag.outputs.tag) || 'pnpm exec changeset publish' }}
+          publish: ${{ steps.compare.outputs.dist_tag != '' && format('pnpm exec changeset publish --tag {0}', steps.compare.outputs.dist_tag) || 'pnpm exec changeset publish' }}
           createGithubReleases: false
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -169,18 +189,21 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           PUBLISHED: ${{ steps.changesets.outputs.publishedPackages }}
           VERSION: ${{ steps.get_version.outputs.package_version }}
+          IS_LATEST: ${{ steps.compare.outputs.is_latest }}
         run: |
-          # The release tag is whatever changesets created. We pick "v${VERSION}"
-          # as the unified one. We don't pass --target so the release attaches
-          # to the existing tag (which lives on main OR the release branch).
+          # changesets creates per-package tags like @pkgring/core@1.0.0; we
+          # additionally create a unified v${VERSION} tag for the GitHub
+          # release. Don't pass --target — the existing tag's commit IS the
+          # right target (lives on main OR the release branch).
+          # --latest is set explicitly: GitHub's auto-detect uses publish
+          # date, which would mark a lagged hotfix as "Latest" by accident.
           node scripts/generate-github-release.mjs "${VERSION}" "${PUBLISHED}" > /tmp/release-body.md
-          # Create a v${VERSION} git tag here (changesets creates per-package
-          # tags like @pkgring/core@1.0.0, but we want one unified tag).
           git tag "v${VERSION}"
           git push origin "v${VERSION}"
           gh release create "v${VERSION}" \
             --title "pkgring v${VERSION}" \
-            --notes-file /tmp/release-body.md
+            --notes-file /tmp/release-body.md \
+            --latest="${IS_LATEST}"
 
       - name: Push v.docker.${VERSION} tag
         if: steps.changesets.outputs.published == 'true'
@@ -209,6 +232,7 @@ jobs:
     uses: ./.github/workflows/publish.yml
     with:
       image_tag: v${{ needs.release.outputs.published_package_version }}
+      is_latest: ${{ needs.release.outputs.is_latest == 'true' }}
 
   publish-helm:
     name: Publish Helm chart
