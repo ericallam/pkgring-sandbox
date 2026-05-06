@@ -118,11 +118,33 @@ jobs:
       - name: Typecheck
         run: pnpm run typecheck --filter "@pkgring/*"
 
+      # Decide which npm dist-tag to publish under.
+      #
+      # - main publish:           no --tag (defaults to "latest")
+      # - release/<M.m>.x publish: --tag v<M.m> (e.g. v0.1)
+      #
+      # This guarantees a release-branch hotfix never overwrites `latest`,
+      # so consumers running `npm install <pkg>` never accidentally get an
+      # older line. They can opt in via `npm install <pkg>@v0.1` if they
+      # want to pin to a release line.
+      - name: Compute npm dist-tag
+        id: dist_tag
+        run: |
+          if [[ "$GITHUB_REF_NAME" == release/* ]]; then
+            VERSION=$(jq -r '.version' packages/core/package.json)
+            LINE="v$(echo "$VERSION" | cut -d. -f1,2)"
+            echo "tag=${LINE}" >> "$GITHUB_OUTPUT"
+            echo "Release-branch publish: --tag ${LINE} (latest will NOT be touched)"
+          else
+            echo "tag=" >> "$GITHUB_OUTPUT"
+            echo "Main publish: default dist-tag (latest)"
+          fi
+
       - name: Publish to npm
         id: changesets
         uses: changesets/action@v1
         with:
-          publish: pnpm run changeset:release
+          publish: ${{ steps.dist_tag.outputs.tag != '' && format('pnpm exec changeset publish --tag {0}', steps.dist_tag.outputs.tag) || 'pnpm exec changeset publish' }}
           createGithubReleases: false
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
