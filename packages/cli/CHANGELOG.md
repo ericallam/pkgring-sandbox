@@ -1,5 +1,13 @@
 # @pkgring/cli
 
+## 0.1.4
+
+### Patch Changes
+
+- Updated dependencies [c78e3a5]
+  - @pkgring/sdk@0.1.4
+  - @pkgring/core@0.1.4
+
 ## 0.1.3
 
 ### Patch Changes
