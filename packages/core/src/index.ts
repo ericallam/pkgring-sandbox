@@ -1,4 +1,5 @@
 export const CORE_VERSION_TAG = "core";
+export const VOLUME_LEVELS = ["whisper", "normal", "shout"] as const;
 
 export type Greeting = {
   message: string;
