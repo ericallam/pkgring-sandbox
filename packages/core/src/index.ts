@@ -12,3 +12,7 @@ export function greet(name: string): Greeting {
 export function farewell(name: string): Greeting {
   return { message: `goodbye, ${name}`, source: "core" };
 }
+
+export function shout(name: string): Greeting {
+  return { message: `HEY, ${name.toUpperCase()}!`, source: "core" };
+}
