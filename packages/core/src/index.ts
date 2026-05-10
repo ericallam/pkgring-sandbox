@@ -20,3 +20,7 @@ export function shout(name: string): Greeting {
 export function whisper(name: string): Greeting {
   return { message: `(psst, ${name.toLowerCase()})`, source: "core" };
 }
+
+export function yell(name: string): Greeting {
+  return { message: `${name.toUpperCase()}!!!`, source: "core" };
+}
