@@ -1,4 +1,4 @@
-import { greet, shout, type Greeting } from "@pkgring/core";
+import { greet, shout, whisper, type Greeting } from "@pkgring/core";
 
 export type Welcome = Greeting & { wrappedBy: "sdk" };
 
@@ -8,4 +8,8 @@ export function welcome(name: string): Welcome {
 
 export function loudWelcome(name: string): Welcome {
   return { ...shout(name), wrappedBy: "sdk" };
+}
+
+export function quietWelcome(name: string): Welcome {
+  return { ...whisper(name), wrappedBy: "sdk" };
 }
