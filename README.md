@@ -47,14 +47,16 @@ pnpm run changeset:add        # add a changeset for a change
 
 ## Release flows
 
-Two flows live side by side. They share workflow files; the only difference is which branch the changesets and version bumps live on.
+Three flows live side by side. They share workflow files; the difference is which branch the changesets live on and whether `.changeset/pre.json` is present.
+
+`release.yml` figures out which flow you're in by inspecting the version it's about to publish and the current `latest` on npm. See the [decision table](docs/RC-FLOW.md#decision-table) for the full matrix.
 
 ### Normal (main)
 
 1. Merge PRs to main with changesets
 2. `changesets-pr.yml` opens / refreshes `changeset-release/main`
 3. Merge that PR
-4. `release.yml` publishes everything
+4. `release.yml` publishes everything: npm under `latest`, Docker `:latest` + `:release-X.Y` updated, GitHub release marked Latest, marketing-site dispatch fires
 
 ### Hotfix (release branch)
 
@@ -66,12 +68,31 @@ git cherry-pick <fix-sha>                 # bring in the fix
 pnpm run changeset:add                    # patch
 git push origin release/1.2.x             # changesets-pr.yml opens
                                           # changeset-release/release/1.2.x
-# ... merge that PR; release.yml runs and ships v1.2.1.
+# ... merge that PR; release.yml ships v1.2.1.
 ```
+
+If `1.2.1` is lower than the current npm `latest` (main has moved on), the hotfix publishes under dist-tag `release-1.2` and skips Docker `:latest` + GitHub Latest badge. The `:release-1.2` Docker line tag IS updated.
+
+### Release candidate (pre-mode)
+
+See [docs/RC-FLOW.md](docs/RC-FLOW.md). TL;DR:
+
+```bash
+git switch main
+pnpm exec changeset pre enter rc          # creates .changeset/pre.json
+git add .changeset/pre.json
+git commit -m "chore: enter prerelease mode (rc)"
+git push                                  # bot regenerates PR as v0.6.0-rc.0
+# ... merge that PR; release.yml ships 0.6.0-rc.0 under dist-tag `rc`.
+# Iterate: every new changeset merged to main bumps to rc.1, rc.2, …
+# When stable-ready: `pnpm exec changeset pre exit`, push, merge → ships 0.6.0.
+```
+
+RC publishes never claim `latest`, skip the Docker `:latest` and `:release-X.Y` line tags, mark the GitHub release as Pre-release, and skip the marketing-site changelog dispatch. The stable cut-over (`pre exit`) restores all the Latest signals.
 
 ## Test plan
 
-See [docs/TESTING.md](docs/TESTING.md) for the eight scenarios we want to mechanically run before porting these workflows back to `trigger.dev`.
+See [docs/TESTING.md](docs/TESTING.md) for thirteen scenarios — eight for the hotfix flow, five for the RC flow — to mechanically run before porting these workflows back to `trigger.dev`.
 
 ## Cost
 
