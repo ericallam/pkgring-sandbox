@@ -16,3 +16,7 @@ export function farewell(name: string): Greeting {
 export function shout(name: string): Greeting {
   return { message: `HEY, ${name.toUpperCase()}!`, source: "core" };
 }
+
+export function whisper(name: string): Greeting {
+  return { message: `(psst, ${name})`, source: "core" };
+}
