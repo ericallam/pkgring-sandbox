@@ -20,3 +20,4 @@ export function shout(name: string): Greeting {
 export function whisper(name: string): Greeting {
   return { message: `(psst, ${name})`, source: "core" };
 }
+// Test 13 no-op marker
