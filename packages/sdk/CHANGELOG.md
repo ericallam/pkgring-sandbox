@@ -1,5 +1,13 @@
 # @pkgring/sdk
 
+## 0.4.0
+
+### Patch Changes
+
+- 6d2b3c9: Add `quietWelcome(name)` for parenthetical greetings.
+- Updated dependencies [a7ff106]
+  - @pkgring/core@0.4.0
+
 ## 0.4.0-rc.1
 
 ### Patch Changes
