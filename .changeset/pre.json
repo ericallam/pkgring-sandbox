@@ -1,0 +1,11 @@
+{
+  "mode": "pre",
+  "tag": "rc",
+  "initialVersions": {
+    "@pkgring/web": "0.0.1",
+    "@pkgring/cli": "0.4.0",
+    "@pkgring/core": "0.4.0",
+    "@pkgring/sdk": "0.4.0"
+  },
+  "changesets": []
+}
