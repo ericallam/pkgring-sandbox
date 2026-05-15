@@ -1,5 +1,12 @@
 # @pkgring/sdk
 
+## 0.4.0-rc.0
+
+### Patch Changes
+
+- Updated dependencies [a7ff106]
+  - @pkgring/core@0.4.0-rc.0
+
 ## 0.3.0
 
 ### Patch Changes

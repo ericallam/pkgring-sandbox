@@ -1,5 +1,11 @@
 # @pkgring/core
 
+## 0.4.0-rc.0
+
+### Minor Changes
+
+- a7ff106: Add `whisper(name)` that produces a parenthetical aside greeting.
+
 ## 0.3.0
 
 ### Minor Changes

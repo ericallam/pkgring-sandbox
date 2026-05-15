@@ -7,5 +7,7 @@
     "@pkgring/core": "0.3.0",
     "@pkgring/sdk": "0.3.0"
   },
-  "changesets": []
+  "changesets": [
+    "whisper-feature"
+  ]
 }
