@@ -1,5 +1,11 @@
 # @pkgring/core
 
+## 0.3.1
+
+### Patch Changes
+
+- 63a0c50: Test 12 hotfix — adds HOTFIX_TEST_12 marker to verify the release-branch flow works while main is in pre mode.
+
 ## 0.3.0
 
 ### Minor Changes

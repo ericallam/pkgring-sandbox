@@ -1,5 +1,12 @@
 # @pkgring/sdk
 
+## 0.3.1
+
+### Patch Changes
+
+- Updated dependencies [63a0c50]
+  - @pkgring/core@0.3.1
+
 ## 0.3.0
 
 ### Patch Changes
