@@ -1,5 +1,7 @@
 # @pkgring/core
 
+## 0.4.0-rc.1
+
 ## 0.4.0-rc.0
 
 ### Minor Changes
