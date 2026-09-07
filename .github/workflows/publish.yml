@@ -8,7 +8,12 @@ on:
         required: true
         type: string
       is_latest:
-        description: "Whether this version should also tag :latest. release.yml computes this via version comparison."
+        description: "Whether this version should also tag :latest. release.yml computes this via version comparison + prerelease check."
+        required: false
+        type: boolean
+        default: false
+      is_prerelease:
+        description: "Whether this is a prerelease (e.g. RC). Skips the :release-X.Y line floating tag — prereleases get only the immutable :vX.Y.Z-rc.N tag."
         required: false
         type: boolean
         default: false
@@ -24,6 +29,11 @@ on:
         type: string
       is_latest:
         description: "Tag this build as :latest as well? Manual override."
+        required: false
+        type: boolean
+        default: false
+      is_prerelease:
+        description: "Skip the :release-X.Y line tag (prerelease/RC build)."
         required: false
         type: boolean
         default: false
@@ -81,6 +91,7 @@ jobs:
           TAG: ${{ steps.get_tag.outputs.tag }}
           IS_SEMVER: ${{ steps.get_tag.outputs.is_semver }}
           IS_LATEST: ${{ inputs.is_latest }}
+          IS_PRERELEASE: ${{ inputs.is_prerelease }}
         run: |
           set -e
           repo="ghcr.io/ericallam/pkgring-sandbox"
@@ -92,14 +103,18 @@ jobs:
             MAJOR_MINOR=$(echo "$VERSION" | cut -d. -f1,2)
 
             # Per-line floating tag (analog of npm "release-X.Y" dist-tag,
-            # and of trigger.dev's :v4-beta). Always set on a semver build
-            # — line-pinned consumers always get the latest patch on their
-            # line, regardless of whether it's the global :latest.
-            tags="$tags,$repo:release-${MAJOR_MINOR}"
+            # and of trigger.dev's :v4-beta). Skipped for prereleases —
+            # :release-0.5 should track the highest 0.5.x STABLE release,
+            # not an unreleased RC.
+            if [[ "$IS_PRERELEASE" != "true" ]]; then
+              tags="$tags,$repo:release-${MAJOR_MINOR}"
+            fi
 
             # Global :latest only updated when release.yml decided this
             # version is the highest-ever (is_latest input). The decision
             # is centralized in release.yml; publish.yml just trusts it.
+            # is_latest is always false for prereleases (release.yml gates
+            # this explicitly), so this branch is naturally skipped for RCs.
             if [[ "$IS_LATEST" == "true" ]]; then
               tags="$tags,$repo:latest"
             fi
