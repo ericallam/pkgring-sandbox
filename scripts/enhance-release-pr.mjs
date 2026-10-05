@@ -30,6 +30,7 @@ if (!prNumber || !sourceBranch || !newVersion) {
 
 const repo = "ericallam/pkgring-sandbox";
 
+const isPrerelease = newVersion.includes("-");
 const isHotfix = sourceBranch.startsWith("release/");
 const lineMatch = sourceBranch.match(/^release\/(\d+\.\d+)\.x$/);
 const linePrefix = lineMatch ? lineMatch[1] : null;
@@ -44,38 +45,69 @@ try {
   // package may not exist yet
 }
 
-const willBeLatest = (() => {
-  const higher = execSync(
-    `printf '%s\\n%s\\n' "${newVersion}" "${currentLatest}" | sort -V | tail -1`,
-    { encoding: "utf8", shell: "/bin/bash" }
-  ).trim();
-  return higher === newVersion && newVersion !== currentLatest;
-})();
+// Prereleases NEVER become latest, regardless of how they sort.
+const willBeLatest = isPrerelease
+  ? false
+  : (() => {
+      const higher = execSync(
+        `printf '%s\\n%s\\n' "${newVersion}" "${currentLatest}" | sort -V | tail -1`,
+        { encoding: "utf8", shell: "/bin/bash" }
+      ).trim();
+      return higher === newVersion && newVersion !== currentLatest;
+    })();
 
 const header = [];
-header.push(`## Release prep`);
-header.push("");
-header.push(`- **Version:** \`${newVersion}\``);
-header.push(`- **Source branch:** \`${sourceBranch}\``);
-header.push(`- **Current \`latest\` on npm:** \`${currentLatest}\``);
-header.push(
-  `- **This release will become \`latest\`:** ${willBeLatest ? "✅ yes" : "❌ no — will publish to dist-tag `release-" + (linePrefix || "?") + "`"}`
-);
 
-if (isHotfix) {
+if (isPrerelease) {
+  // Pre-mode RC framing. Version-comparison is irrelevant; .changeset/pre.json
+  // owns the dist-tag and ensures this never claims latest.
+  const preTag = (() => {
+    // Best-effort read of pre.json.tag for accurate framing. Falls back to "rc".
+    try {
+      const preJson = execSync(`cat .changeset/pre.json`, { encoding: "utf8" });
+      return JSON.parse(preJson).tag ?? "rc";
+    } catch {
+      return "rc";
+    }
+  })();
+  header.push(`## Release prep — Release Candidate`);
   header.push("");
-  header.push(`> Hotfix on the **${linePrefix}.x** line.`);
-  if (willBeLatest) {
-    header.push(
-      `> Becomes \`latest\` because the current latest (${currentLatest}) is older. ` +
-        `Customers running \`npm install\` will pick this up.`
-    );
-  } else {
-    header.push(
-      `> Will NOT become \`latest\` because main has shipped a higher version (${currentLatest}). ` +
-        `Customers wanting this fix on the ${linePrefix}.x line should pin: ` +
-        `\`npm install @pkgring/core@release-${linePrefix}\`.`
-    );
+  header.push(`- **Version:** \`${newVersion}\``);
+  header.push(`- **Source branch:** \`${sourceBranch}\``);
+  header.push(`- **npm dist-tag:** \`${preTag}\` (read from \`.changeset/pre.json\`)`);
+  header.push(`- **Current stable \`latest\` on npm:** \`${currentLatest}\` (unchanged by this publish)`);
+  header.push(`- **Will become \`latest\`:** ❌ no — prereleases never claim Latest`);
+  header.push("");
+  header.push(
+    `> **Pre-mode active.** Each merge of this PR ships another RC. ` +
+      `When ready to ship stable, run \`pnpm exec changeset pre exit\` on \`${sourceBranch}\` ` +
+      `and merge the regenerated PR.`
+  );
+} else {
+  header.push(`## Release prep`);
+  header.push("");
+  header.push(`- **Version:** \`${newVersion}\``);
+  header.push(`- **Source branch:** \`${sourceBranch}\``);
+  header.push(`- **Current \`latest\` on npm:** \`${currentLatest}\``);
+  header.push(
+    `- **This release will become \`latest\`:** ${willBeLatest ? "✅ yes" : "❌ no — will publish to dist-tag `release-" + (linePrefix || "?") + "`"}`
+  );
+
+  if (isHotfix) {
+    header.push("");
+    header.push(`> Hotfix on the **${linePrefix}.x** line.`);
+    if (willBeLatest) {
+      header.push(
+        `> Becomes \`latest\` because the current latest (${currentLatest}) is older. ` +
+          `Customers running \`npm install\` will pick this up.`
+      );
+    } else {
+      header.push(
+        `> Will NOT become \`latest\` because main has shipped a higher version (${currentLatest}). ` +
+          `Customers wanting this fix on the ${linePrefix}.x line should pin: ` +
+          `\`npm install @pkgring/core@release-${linePrefix}\`.`
+      );
+    }
   }
 }
 header.push("");
