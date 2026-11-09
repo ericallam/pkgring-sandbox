@@ -13,6 +13,24 @@ name: "Release"
 #   - Docker image (ghcr.io/ericallam/pkgring-sandbox) tagged v${VERSION}
 #   - Helm chart (oci://ghcr.io/ericallam/charts/pkgring) tagged v${VERSION}
 #   - GitHub release at v${VERSION}
+#
+# Three release shapes are supported by the same path:
+#
+#   - **Stable on main**: highest-ever version → npm `latest`, Docker `:latest`,
+#     `:release-X.Y` line tag, GitHub Latest badge, marketing-site dispatch.
+#   - **Lagged hotfix on a release branch**: version is lower than current npm
+#     `latest` → publishes under `release-X.Y` dist-tag, NO Docker `:latest`,
+#     but DOES update `:release-X.Y` line tag, NO GitHub Latest badge,
+#     still dispatches the changelog.
+#   - **Release candidate via changesets pre mode**: version contains a hyphen
+#     (e.g. `0.5.0-rc.0`) → changesets `publish` reads `.changeset/pre.json`
+#     and uses the pre-mode dist-tag (e.g. `rc`). NO npm `latest`, NO Docker
+#     `:latest`, NO `:release-X.Y` line tag, GitHub release marked as
+#     Pre-release, marketing-site dispatch is skipped.
+#
+# Prereleases are detected by hyphen-in-version and override the version-
+# comparison "latest" rule — an RC is never Latest, regardless of how it
+# sorts against the current npm latest.
 
 on:
   pull_request:
@@ -68,6 +86,7 @@ jobs:
       published_packages: ${{ steps.changesets.outputs.publishedPackages }}
       published_package_version: ${{ steps.get_version.outputs.package_version }}
       is_latest: ${{ steps.compare.outputs.is_latest }}
+      is_prerelease: ${{ steps.compare.outputs.is_prerelease }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -119,23 +138,24 @@ jobs:
       - name: Typecheck
         run: pnpm run typecheck --filter "@pkgring/*"
 
-      # Decide whether this publish should become the new "latest" everywhere
-      # (npm dist-tag, Docker `:latest`, GitHub release "Latest" badge).
+      # Decide three things about this publish:
       #
-      # The right rule isn't "are we on a release branch" — it's "is this
-      # version higher than the current latest." That rule handles both:
+      #   - is_prerelease: does the version have a hyphen? (e.g. 0.5.0-rc.0)
+      #     Prereleases are pre-mode RC publishes; changesets/action picks
+      #     the npm dist-tag from .changeset/pre.json.
       #
-      #   - Lagged hotfix: main shipped 1.5.0; hotfix 1.2.4 from release/1.2.x
-      #     -> 1.2.4 < 1.5.0 -> NOT latest. Goes to dist-tag release-1.2.
+      #   - is_latest:    should this claim "latest" everywhere (npm,
+      #                   Docker :latest, GitHub Latest badge)?
       #
-      #   - Fresh hotfix while main has unreleased work: main released 4.4.5,
-      #     PR #3173 merged but unreleased; hotfix 4.4.6 from release/4.4.x
-      #     -> 4.4.6 > 4.4.5 -> IS latest. Customers running `npm install`
-      #     get the patch.
+      #   - dist_tag:     what to pass to `changeset publish --tag <X>`.
       #
-      # Source of truth: npm's `latest` dist-tag for the canonical package
-      # (@pkgring/core). All packages are version-locked via `fixed` in
-      # changeset config so any one is canonical.
+      # is_latest = (NEW > current npm latest) AND NOT is_prerelease.
+      # The version-comparison part handles the hotfix case: a lagged hotfix
+      # on release/1.2.x while main is at 1.5.x is lower than latest, so
+      # not-latest. A fresh hotfix on release/4.4.x while main released
+      # 4.4.5 but has unreleased 4.5.x work is higher, so latest.
+      # The prerelease override is what stops 0.5.0-rc.0 from claiming
+      # latest just because it sorts higher than 0.4.5.
       - name: Compare new version to current latest
         id: compare
         run: |
@@ -146,23 +166,52 @@ jobs:
             CURRENT="0.0.0"
           fi
 
-          # sort -V is semver-aware. If NEW is strictly greater than CURRENT,
-          # NEW is the "highest after this publish" -> becomes latest.
+          # Any semver with a hyphen is a prerelease (0.5.0-rc.0, 0.5.0-beta.1, …).
+          if [[ "$NEW" == *-* ]]; then
+            IS_PRERELEASE=true
+          else
+            IS_PRERELEASE=false
+          fi
+
+          # sort -V is semver-aware. Would NEW be the new highest-version
+          # after publish?
           HIGHER=$(printf '%s\n%s\n' "$NEW" "$CURRENT" | sort -V | tail -1)
           if [ "$HIGHER" = "$NEW" ] && [ "$NEW" != "$CURRENT" ]; then
+            IS_HIGHER=true
+          else
+            IS_HIGHER=false
+          fi
+
+          # A prerelease never becomes the canonical latest, even if it
+          # sorts higher than current. Otherwise, latest follows
+          # highest-version.
+          if [ "$IS_PRERELEASE" = "true" ]; then
+            IS_LATEST=false
+          elif [ "$IS_HIGHER" = "true" ]; then
             IS_LATEST=true
-            DIST_TAG=""
           else
             IS_LATEST=false
+          fi
+
+          # npm dist-tag passed to `changeset publish --tag <X>`:
+          #   - Prerelease  → no --tag (changesets uses pre.json.tag)
+          #   - Latest      → no --tag (changesets defaults to "latest")
+          #   - Lagged hotfix → "release-X.Y"
+          if [ "$IS_PRERELEASE" = "true" ]; then
+            DIST_TAG=""
+          elif [ "$IS_LATEST" = "true" ]; then
+            DIST_TAG=""
+          else
             DIST_TAG="release-$(echo "$NEW" | cut -d. -f1,2)"
           fi
 
-          echo "new=${NEW}"             >> "$GITHUB_OUTPUT"
-          echo "current=${CURRENT}"     >> "$GITHUB_OUTPUT"
-          echo "is_latest=${IS_LATEST}" >> "$GITHUB_OUTPUT"
-          echo "dist_tag=${DIST_TAG}"   >> "$GITHUB_OUTPUT"
+          echo "new=${NEW}"                      >> "$GITHUB_OUTPUT"
+          echo "current=${CURRENT}"              >> "$GITHUB_OUTPUT"
+          echo "is_prerelease=${IS_PRERELEASE}"  >> "$GITHUB_OUTPUT"
+          echo "is_latest=${IS_LATEST}"          >> "$GITHUB_OUTPUT"
+          echo "dist_tag=${DIST_TAG}"            >> "$GITHUB_OUTPUT"
 
-          echo "::notice::Publishing ${NEW}; current latest=${CURRENT}; is_latest=${IS_LATEST}; dist_tag=${DIST_TAG:-latest}"
+          echo "::notice::Publishing ${NEW}; current latest=${CURRENT}; is_prerelease=${IS_PRERELEASE}; is_latest=${IS_LATEST}; dist_tag=${DIST_TAG:-(default)}"
 
       - name: Publish to npm
         id: changesets
@@ -190,6 +239,7 @@ jobs:
           PUBLISHED: ${{ steps.changesets.outputs.publishedPackages }}
           VERSION: ${{ steps.get_version.outputs.package_version }}
           IS_LATEST: ${{ steps.compare.outputs.is_latest }}
+          IS_PRERELEASE: ${{ steps.compare.outputs.is_prerelease }}
         run: |
           # changesets creates per-package tags like @pkgring/core@1.0.0; we
           # additionally create a unified v${VERSION} tag for the GitHub
@@ -197,13 +247,20 @@ jobs:
           # right target (lives on main OR the release branch).
           # --latest is set explicitly: GitHub's auto-detect uses publish
           # date, which would mark a lagged hotfix as "Latest" by accident.
-          node scripts/generate-github-release.mjs "${VERSION}" "${PUBLISHED}" "${IS_LATEST}" > /tmp/release-body.md
+          # --prerelease is set for RC publishes (hyphen in version) so the
+          # release page shows the Pre-release badge.
+          node scripts/generate-github-release.mjs "${VERSION}" "${PUBLISHED}" "${IS_LATEST}" "${IS_PRERELEASE}" > /tmp/release-body.md
           git tag "v${VERSION}"
           git push origin "v${VERSION}"
+          PRERELEASE_FLAG=""
+          if [ "${IS_PRERELEASE}" = "true" ]; then
+            PRERELEASE_FLAG="--prerelease"
+          fi
           gh release create "v${VERSION}" \
             --title "pkgring v${VERSION}" \
             --notes-file /tmp/release-body.md \
-            --latest="${IS_LATEST}"
+            --latest="${IS_LATEST}" \
+            ${PRERELEASE_FLAG}
 
       - name: Push v.docker.${VERSION} tag
         if: steps.changesets.outputs.published == 'true'
@@ -233,6 +290,7 @@ jobs:
     with:
       image_tag: v${{ needs.release.outputs.published_package_version }}
       is_latest: ${{ needs.release.outputs.is_latest == 'true' }}
+      is_prerelease: ${{ needs.release.outputs.is_prerelease == 'true' }}
 
   publish-helm:
     name: Publish Helm chart
@@ -248,7 +306,10 @@ jobs:
   dispatch-changelog:
     name: Dispatch changelog entry to pkgring-site
     needs: [release, publish-docker, publish-helm]
-    if: needs.release.outputs.published == 'true'
+    # Skip the marketing-site changelog dispatch for prereleases — multiple
+    # RCs would file multiple changelog PRs for what is conceptually one
+    # release. The eventual stable will fire this with the cumulative notes.
+    if: needs.release.outputs.published == 'true' && needs.release.outputs.is_prerelease != 'true'
     runs-on: ubuntu-latest
     permissions: {}
     steps:
